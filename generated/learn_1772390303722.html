@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mitosis Visualization</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0a1a; font-family: Arial, sans-serif; }
+        #infoPanel { position: absolute; top: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); padding: 10px; border-radius: 5px; color: #00f3ff; cursor: pointer; z-index: 1; }
+        #infoPanel:hover #infoContent { display: block; }
+        #infoContent { display: none; position: absolute; top: 30px; left: 10px; background: rgba(0, 0, 0, 0.7); padding: 10px; border-radius: 5px; color: #fff; }
+       .tooltip { position: absolute; background: rgba(0, 0, 0, 0.7); padding: 5px; border-radius: 5px; color: #fff; display: none; }
+    </style>
+</head>
+<body>
+    <div id="infoPanel">ℹ️ Info</div>
+    <div id="infoContent">
+        <p>Mitosis is the process of cell division. Drag to rotate, scroll to zoom, and click objects for more info.</p>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, controls;
+        let objects = [];
+        let selectedObject = null;
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 10, 7.5).normalize();
+            scene.add(directionalLight);
+
+            createObjects();
+            createGrid();
+            createControls();
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function createObjects() {
+            const nucleusGeometry = new THREE.SphereGeometry(1, 32, 32);
+            const nucleusMaterial = new THREE.MeshBasicMaterial({ color: 0x00f3ff });
+            const nucleus = new THREE.Mesh(nucleusGeometry, nucleusMaterial);
+            nucleus.position.set(0, 0, 0);
+            nucleus.userData = { name: "Nucleus" };
+            scene.add(nucleus);
+            objects.push(nucleus);
+
+            const chromosomeGeometry = new THREE.BoxGeometry(0.5, 0.1, 0.1);
+            const chromosomeMaterial = new THREE.MeshBasicMaterial({ color: 0xa855f7 });
+            const chromosomes = [];
+            for (let i = 0; i < 10; i++) {
+                const chromosome = new THREE.Mesh(chromosomeGeometry, chromosomeMaterial);
+                chromosome.position.set(Math.random() * 3 - 1.5, Math.random() * 3 - 1.5, Math.random() * 3 - 1.5);
+                chromosome.userData = { name: "Chromosome" };
+                scene.add(chromosome);
+                chromosomes.push(chromosome);
+            }
+            objects.push(...chromosomes);
+
+            const spindleGeometry = new THREE.CylinderGeometry(0.05, 0.05, 1, 32);
+            const spindleMaterial = new THREE.MeshBasicMaterial({ color: 0xff006e });
+            const spindle = new THREE.Mesh(spindleGeometry, spindleMaterial);
+            spindle.position.set(0, 1.5, 0);
+            spindle.rotation.x = Math.PI / 2;
+            spindle.userData = { name: "Spindle Fibers" };
+            scene.add(spindle);
+            objects.push(spindle);
+        }
+
+        function createGrid() {
+            const size = 10, step = 1;
+            const gridHelper = new THREE.GridHelper(size, step);
+            gridHelper.material.color = 0x888888;
+            scene.add(gridHelper);
+        }
+
+        function createControls() {
+            document.addEventListener('mousedown', onDocumentMouseDown, false);
+            document.addEventListener('mousemove', onDocumentMouseMove, false);
+            document.addEventListener('mouseup', onDocumentMouseUp, false);
+            document.addEventListener('wheel', onDocumentMouseWheel, false);
+        }
+
+        let isDragging = false, offset = new THREE.Vector2();
+        let lastPositions = new THREE.Vector2();
+
+        function onDocumentMouseDown(event) {
+            isDragging = true;
+            lastPositions.x = event.clientX;
+            lastPositions.y = event.clientY;
+        }
+
+        function onDocumentMouseMove(event) {
+            if (isDragging) {
+                const deltaMove = new THREE.Vector2(event.clientX - lastPositions.x, event.clientY - lastPositions.y);
+                camera.position.x -= deltaMove.y * 0.02;
+                camera.position.y += deltaMove.x * 0.02;
+                lastPositions.copy(offset);
+            }
+        }
+
+        function onDocumentMouseUp(event) {
+            isDragging = false;
+        }
+
+        function onDocumentMouseWheel(event) {
+            const direction = event.deltaY > 0 ? -1 : 1;
+            camera.position.z += direction * 0.1;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            objects.forEach(obj => {
+                obj.rotation.x += 0.01;
+                obj.rotation.y += 0.01;
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        document.addEventListener('click', (event) => {
+            const mouse = new THREE.Vector2(
+                (event.clientX / window.innerWidth) * 2 - 1,
+                -(event.clientY / window.innerHeight) * 2 + 1
+            );
+
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObjects(objects);
+            if (intersects.length > 0) {
+                const object = intersects[0].object;
+                if (selectedObject) {
+                    selectedObject.material.color.set(selectedObject.userData.color);
+                }
+                selectedObject = object;
+                selectedObject.material.color.set(0xff8800);
+
+                const tooltip = document.createElement('div');
+                tooltip.classList.add('tooltip');
+                tooltip.textContent = object.userData.name;
+                tooltip.style.left = event.clientX + 'px';
+                tooltip.style.top = event.clientY + 'px';
+                document.body.appendChild(tooltip);
+
+                setTimeout(() => {
+                    tooltip.remove();
+                }, 2000);
+            }
+        });
+    </script>
+</body>
+</html>

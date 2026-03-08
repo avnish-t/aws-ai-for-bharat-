@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Molecular Machines & Protein Conformational Changes</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #00f3ff; /* Neon Cyan */
+            background-color: #0a0a1a; /* Dark background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+        }
+
+        /* Info Panel */
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #00f3ff;
+            border-radius: 8px;
+            padding: 10px 15px;
+            max-width: 300px;
+            z-index: 10;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.6);
+            transition: all 0.3s ease-in-out;
+        }
+
+        #info-panel .title-toggle {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1.2em;
+            color: #a855f7; /* Neon Purple */
+        }
+
+        #info-panel .title-toggle:hover {
+            color: #ff006e; /* Neon Pink */
+        }
+
+        #info-panel .content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            opacity: 0;
+        }
+
+        #info-panel:hover .content {
+            max-height: 200px; /* Adjust based on content height */
+            opacity: 1;
+            margin-top: 10px;
+        }
+
+        #info-panel h2 {
+            margin-top: 5px;
+            margin-bottom: 10px;
+            color: #00ff88; /* Neon Green */
+            font-size: 1.1em;
+        }
+
+        #info-panel p {
+            margin-bottom: 5px;
+            line-height: 1.4;
+            font-size: 0.9em;
+            color: #00f3ff;
+        }
+
+        #info-panel .instructions {
+            font-style: italic;
+            font-size: 0.85em;
+            color: #ff006e;
+        }
+
+        /* Tooltip */
+        #tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #ff006e; /* Neon Pink */
+            border-radius: 5px;
+            padding: 8px 12px;
+            color: #00f3ff;
+            font-size: 0.9em;
+            pointer-events: none; /* Allows clicks to pass through */
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            transform: translate(-50%, -100%); /* Position above cursor */
+            z-index: 11;
+            box-shadow: 0 0 10px rgba(255, 0, 110, 0.5);
+        }
+
+        #tooltip.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Labels */
+        #labels-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allows interaction with objects behind labels */
+            z-index: 5;
+        }
+
+        .label {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid #00ff88;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 0.8em;
+            white-space: nowrap;
+            color: #a855f7;
+            box-shadow: 0 0 8px rgba(0, 255, 136, 0.4);
+            transform: translate(-50%, -100%); /* Position above the point */
+        }
+    </style>
+</head>
+<body>
+    <div id="info-panel">
+        <div class="title-toggle">
+            ℹ️ Molecular Machines
+        </div>
+        <div class="content">
+            <h2>Molecular Machines & Protein Conformational Changes</h2>
+            <p>Explore how proteins function as intricate molecular machines, undergoing conformational changes to perform specific tasks, often driven by energy input.</p>
+            <p class="instructions">Drag to rotate • Scroll to zoom • Click objects for info</p>
+        </div>
+    </div>
+
+    <div id="tooltip"></div>
+    <div id="labels-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // --- Three.js Setup ---
+        let scene, camera, renderer, raycaster, mouse;
+        let objectsToAnimate = [];
+        let clickableObjects = [];
+        const labels = {}; // Store {object.uuid: {div: HTMLDivElement, target: THREE.Object3D}}
+
+        const neonColors = {
+            cyan: new THREE.Color(0x00f3ff),
+            purple: new THREE.Color(0xa855f7),
+            pink: new THREE.Color(0xff006e),
+            green: new THREE.Color(0x00ff88),
+            darkBackground: new THREE.Color(0x0a0a1a)
+        };
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = neonColors.darkBackground;
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 10);
+            camera.lookAt(0, 0, 0);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0x404040, 1.5); // Soft white light
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+
+            // Raycaster for clicks
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            // --- Background Stars ---
+            const starGeometry = new THREE.BufferGeometry();
+            const starVertices = [];
+            for (let i = 0; i < 5000; i++) {
+                const x = THREE.MathUtils.randFloatSpread(200);
+                const y = THREE.MathUtils.randFloatSpread(200);
+                const z = THREE.MathUtils.randFloatSpread(200);
+                starVertices.push(x, y, z);
+            }
+            starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+            const starMaterial = new THREE.PointsMaterial({
+                color: neonColors.cyan,
+                size: 0.1,
+                transparent: true,
+                opacity: 0.7,
+                blending: THREE.AdditiveBlending
+            });
+            const stars = new THREE.Points(starGeometry, starMaterial);
+            scene.add(stars);
+            objectsToAnimate.push({ object: stars, type: 'stars' }); // For subtle rotation
+
+            // --- 3D Objects: Molecular Machine Components ---
+
+            // Materials
+            const coreMaterial = new THREE.MeshStandardMaterial({
+                color: neonColors.purple,
+                emissive: neonColors.purple,
+                emissiveIntensity: 0.8,
+                roughness: 0.2,
+                metalness: 0.8
+            });
+
+            const subunitInactiveMaterial = new THREE.MeshStandardMaterial({
+                color: neonColors.cyan,
+                emissive: neonColors.cyan,
+                emissiveIntensity: 0.6,
+                roughness: 0.5,
+                metalness: 0.2
+            });
+
+            const subunitActiveMaterial = new THREE.MeshStandardMaterial({
+                color: neonColors.green,
+                emissive: neonColors.green,
+                emissiveIntensity: 1.0,
+                roughness: 0.1,
+                metalness: 0.9
+            });
+
+            const bindingSiteMaterial = new THREE.MeshStandardMaterial({
+                color: neonColors.pink,
+                emissive: neonColors.pink,
+                emissiveIntensity: 0.9,
+                roughness: 0.3,
+                metalness: 0.5
+            });
+
+            const energyMaterial = new THREE.MeshStandardMaterial({
+                color: neonColors.pink,
+                emissive: neonColors.pink,
+                emissiveIntensity: 1.2,
+                roughness: 0.1,
+                metalness: 0.9
+            });
+
+            // 1. Molecular Machine Core
+            const coreGroup = new THREE.Group();
+            const coreCylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2, 32), coreMaterial);
+            coreCylinder.rotation.x = Math.PI / 2;
+            coreGroup.add(coreCylinder);
+
+            const coreTorus1 = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.3, 16, 100), coreMaterial);
+            coreTorus1.position.set(0, 0, 0);
+            coreGroup.add(coreTorus1);
+
+            const coreTorus2 = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.2, 16, 100), coreMaterial);
+            coreTorus2.rotation.x = Math.PI / 2;
+            coreGroup.add(coreTorus2);
+
+            scene.add(coreGroup);
+            coreGroup.userData = {
+                name: "Molecular Machine Core",
+                info: "The central complex that facilitates cellular processes. It performs mechanical work through coordinated movements of its components."
+            };
+            coreGroup.userData.clickable = true;
+            clickableObjects.push(coreGroup);
+            objectsToAnimate.push({ object: coreGroup, type: 'rotate' });
+            addHTMLLabel(coreGroup, "Molecular Machine Core", neonColors.purple);
+
+            // 2. Inactive Protein Subunit
+            const subunit1 = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.5, 2, 8), subunitInactiveMaterial);
+            subunit1.position.set(-3, 1, 0);
+            scene.add(subunit1);
+            subunit1.userData = {
+                name: "Inactive Protein Subunit",
+                info: "A protein subunit in its resting or inactive state, unable to bind or perform its function efficiently."
+            };
+            subunit1.userData.clickable = true;
+            clickableObjects.push(subunit1);
+            addHTMLLabel(subunit1, "Inactive Subunit", neonColors.cyan);
+
+            // 3. Active Protein Subunit (starts off and moves in)
+            const subunit2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), subunitActiveMaterial);
+            subunit2.geometry.applyMatrix4(new THREE.Matrix4().makeTranslation(0, 0.4, 0)); // Move pivot to base for scaling
+            subunit2.position.set(4, -1, 0);
+            subunit2.rotation.z = Math.PI / 4;
+            scene.add(subunit2);
+            subunit2.userData = {
+                name: "Active Protein Subunit",
+                info: "This subunit has undergone a conformational change, adopting an active state. It can now bind to the core machine and perform its specific function."
+            };
+            subunit2.userData.clickable = true;
+            clickableObjects.push(subunit2);
+            objectsToAnimate.push({ object: subunit2, type: 'activate' }); // Animation for movement and conformational change
+            addHTMLLabel(subunit2, "Active Subunit", neonColors.green);
+
+
+            // 4. Binding Site on Core
+            const bindingSite = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.0, 32), bindingSiteMaterial);
+            bindingSite.rotation.x = Math.PI / 2;
+            bindingSite.position.set(0, 0.8, 0);
+            coreGroup.add(bindingSite); // Attach to core group
+            bindingSite.userData = {
+                name: "Binding Site",
+                info: "A specific region on the molecular machine's core where an active protein subunit can attach, initiating its function."
+            };
+            bindingSite.userData.clickable = true;
+            clickableObjects.push(bindingSite);
+            addHTMLLabel(bindingSite, "Binding Site", neonColors.pink);
+
+            // 5. Energy Molecule (ATP/GTP analog)
+            const energyMolecule = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 0), energyMaterial);
+            energyMolecule.position.set(1.5, 2, -1);
+            scene.add(energyMolecule);
+            energyMolecule.userData = {
+                name: "Energy Input (ATP/GTP)",
+                info: "An energy-carrying molecule (like ATP or GTP) that, upon hydrolysis, provides the energy required to drive conformational changes in molecular machines."
+            };
+            energyMolecule.userData.clickable = true;
+            clickableObjects.push(energyMolecule);
+            objectsToAnimate.push({ object: energyMolecule, type: 'pulse' });
+            addHTMLLabel(energyMolecule, "Energy Input", neonColors.pink);
+
+            // --- Event Listeners ---
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('click', onDocumentClick);
+        }
+
+        // --- Manual Orbit Controls ---
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let phi = Math.PI / 2.5; // Polar angle (0 = top, PI = bottom)
+        let theta = Math.PI / 4; // Azimuthal angle (around Y axis)
+        let radius = 10; // Camera distance from target
+        const target = new THREE.Vector3(0, 0, 0); // Camera target
+
+        function updateCameraPosition() {
+            phi = Math.max(0.01, Math.min(Math.PI - 0.01, phi)); // Clamp phi to prevent camera flipping
+
+            camera.position.x = target.x + radius * Math.sin(phi) * Math.sin(theta);
+            camera.position.y = target.y + radius * Math.cos(phi);
+            camera.position.z = target.z + radius * Math.sin(phi) * Math.cos(theta);
+            camera.lookAt(target);
+        }
+
+        document.addEventListener('mousedown', (e) => {
+            // Only respond to left mouse button and not on overlay panels
+            if (e.button === 0 && !e.target.closest('#info-panel') && !e.target.closest('#tooltip')) {
+                isDragging = true;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+                document.body.style.cursor = 'grabbing';
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const deltaX = e.clientX - previousMousePosition.x;
+            const deltaY = e.clientY - previousMousePosition.y;
+
+            theta += deltaX * 0.005; // Azimuthal rotation speed
+            phi -= deltaY * 0.005; // Polar rotation speed
+
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+            updateCameraPosition();
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            document.body.style.cursor = 'default';
+        });
+
+        document.addEventListener('wheel', (e) => {
+            e.preventDefault(); // Prevent page scrolling
+            radius += e.deltaY * 0.01; // Zoom speed
+            radius = Math.max(3, Math.min(30, radius)); // Clamp zoom range
+            updateCameraPosition();
+        });
+
+        // Initial camera position update
+        updateCameraPosition();
+
+
+        // --- HTML Labels ---
+        const labelsContainer = document.getElementById('labels-container');
+        const tempV = new THREE.Vector3(); // Re-use vector for performance
+
+        function addHTMLLabel(object, text, color) {
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'label';
+            labelDiv.textContent = text;
+            labelDiv.style.borderColor = '#' + color.getHexString();
+            labelDiv.style.color = '#' + color.getHexString();
+            labelsContainer.appendChild(labelDiv);
+            labels[object.uuid] = { div: labelDiv, target: object };
+        }
+
+        function updateHTMLLabels() {
+            for (const uuid in labels) {
+                const { div, target } = labels[uuid];
+                // Get the world position of the target object
+                target.getWorldPosition(tempV);
+
+                // Project the 3D position to 2D screen coordinates
+                tempV.project(camera);
+
+                // Calculate screen coordinates
+                const x = (tempV.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-tempV.y * 0.5 + 0.5) * window.innerHeight;
+
+                // Update label position
+                div.style.left = `${x}px`;
+                div.style.top = `${y}px`;
+
+                // Optionally hide label if behind camera or too far
+                const distance = camera.position.distanceTo(target.position);
+                if (distance > radius * 1.5 || tempV.z > 1) { // tempV.z > 1 means behind the camera
+                     div.style.display = 'none';
+                } else {
+                     div.style.display = 'block';
+                }
+            }
+        }
+
+        // --- Animations ---
+        const clock = new THREE.Clock();
+        const activateTime = 3; // Time for subunit to activate
+        let subunit2CurrentTime = 0;
+        let subunit2Activated = false;
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const elapsedTime = clock.getElapsedTime();
+
+            // Object animations
+            objectsToAnimate.forEach(obj => {
+                switch (obj.type) {
+                    case 'rotate':
+                        obj.object.rotation.y += 0.005;
+                        break;
+                    case 'stars':
+                        obj.object.rotation.y += 0.0001;
+                        obj.object.rotation.x += 0.00005;
+                        break;
+                    case 'pulse':
+                        // Energy molecule pulsing
+                        obj.object.scale.setScalar(1 + Math.sin(elapsedTime * 5) * 0.08);
+                        break;
+                    case 'activate':
+                        // Subunit 2 movement and conformational change
+                        if (!subunit2Activated) {
+                            subunit2CurrentTime += delta;
+                            const t = Math.min(1, subunit2CurrentTime / activateTime);
+
+                            // Movement towards binding site (simple linear path for demo)
+                            obj.object.position.lerpVectors(new THREE.Vector3(4, -1, 0), new THREE.Vector3(0, 0.8, 0), t);
+
+                            // Rotation to align with binding site
+                            obj.object.rotation.z = Math.PI / 4 * (1 - t);
+
+                            // Conformational change (scaling and subtle rotation)
+                            obj.object.scale.y = 1 + Math.sin(t * Math.PI) * 0.3; // "Open" then "close" slightly
+                            obj.object.scale.x = 1 - Math.sin(t * Math.PI) * 0.1;
+                            obj.object.scale.z = 1 - Math.sin(t * Math.PI) * 0.1;
+                            obj.object.rotation.y = Math.sin(t * Math.PI * 2) * 0.1; // Jiggle during change
+
+                            if (t >= 1) {
+                                subunit2Activated = true;
+                                obj.object.position.set(0, 0.8, 0); // Snap to final position
+                                obj.object.rotation.z = 0;
+                                obj.object.scale.set(1, 1, 1);
+                            }
+                        } else {
+                            // Subunit 2, now active and bound, can have subtle continuous animation
+                            obj.object.rotation.y += Math.sin(elapsedTime * 0.5) * 0.001;
+                            obj.object.position.y = 0.8 + Math.sin(elapsedTime * 2) * 0.02; // Subtle bobbing
+                        }
+                        break;
+                }
+            });
+
+            updateHTMLLabels();
+            renderer.render(scene, camera);
+        }
+
+        // --- Event Handlers ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        const tooltip = document.getElementById('tooltip');
+
+        function onDocumentClick(event) {
+            // Prevent click propagation from overlay elements
+            if (event.target.closest('#info-panel')) {
+                return;
+            }
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObjects(clickableObjects, true); // true for recursive check
+
+            if (intersects.length > 0) {
+                let foundObject = intersects[0].object;
+                // Traverse up to find the group or parent object with userData.clickable
+                while (foundObject && !foundObject.userData.clickable && foundObject.parent) {
+                    foundObject = foundObject.parent;
+                }
+
+                if (foundObject && foundObject.userData.clickable) {
+                    tooltip.innerHTML = `<strong>${foundObject.userData.name}</strong><br>${foundObject.userData.info}`;
+                    tooltip.style.left = `${event.clientX}px`;
+                    tooltip.style.top = `${event.clientY}px`;
+                    tooltip.classList.add('visible');
+                } else {
+                    tooltip.classList.remove('visible');
+                }
+            } else {
+                tooltip.classList.remove('visible');
+            }
+        }
+
+        // Initialize and start
+        init();
+        animate();
+    </script>
+</body>
+</html>
+```
